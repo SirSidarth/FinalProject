@@ -1,33 +1,34 @@
 package com.example.finalproject
 
-import androidx.compose.ui.graphics.Brush
-import kotlin.random.Random
-
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,6 +44,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen() {
     var selectedTab by remember { mutableStateOf("Home") }
+    var currentPlaylist by remember { mutableStateOf<String?>(null) }
+    val viewModel: MainViewModel = viewModel()
 
     Scaffold(
         topBar = { TopBar() },
@@ -52,29 +55,31 @@ fun MainScreen() {
                 onTabSelected = { selectedTab = it }
             )
         }
-    ) { inner ->
+    ) { innerPadding ->
         Box(
             modifier = Modifier
-                .padding(inner)
+                .padding(innerPadding)
                 .fillMaxSize()
         ) {
-            when (selectedTab) {
-                "Home" -> SearchScreen()
-                "Library" -> LibraryScreen()
+            when {
+                currentPlaylist != null -> SongsScreen(currentPlaylist!!, viewModel, onBack = { currentPlaylist = null })
+                selectedTab == "Home" -> SearchScreen(viewModel) { playlist -> currentPlaylist = playlist }
+                selectedTab == "Library" -> LibraryScreen()
             }
         }
     }
 }
 
 @Composable
-fun SearchScreen() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-    ) {
+fun SearchScreen(viewModel: MainViewModel, onPlaylistClick: (String) -> Unit) {
+    var searchText by remember { mutableStateOf("") }
+    val tiles by viewModel.tiles.collectAsState()
+    val filteredTiles = tiles.filter { it.label.contains(searchText, ignoreCase = true) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
         OutlinedTextField(
-            value = "",
-            onValueChange = {},
+            value = searchText,
+            onValueChange = { searchText = it },
             placeholder = { Text("Gaana Music") },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             modifier = Modifier
@@ -82,7 +87,6 @@ fun SearchScreen() {
                 .fillMaxWidth()
         )
 
-        val tiles = demoTiles()
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             contentPadding = PaddingValues(16.dp),
@@ -90,8 +94,46 @@ fun SearchScreen() {
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            items(tiles) { t -> CategoryCard(t) }
+            items(filteredTiles) { tile ->
+                CategoryCard(tile) { onPlaylistClick(tile.label) }
+            }
         }
+    }
+}
+
+@Composable
+fun SongsScreen(playlist: String, viewModel: MainViewModel, onBack: () -> Unit) {
+    val songs = viewModel.getSongsForPlaylist(playlist)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF121212))
+            .padding(16.dp)
+    ) {
+        Text(
+            "Playlist: $playlist",
+            fontSize = 24.sp,
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        LazyColumn {
+            items(songs) { song ->
+                Text(
+                    song,
+                    fontSize = 18.sp,
+                    color = Color.White,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                        .background(Color(0xFF1F1F1F), RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = onBack) { Text("Back") }
     }
 }
 
@@ -104,18 +146,9 @@ fun LibraryScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            "Your Library is Empty",
-            color = Color.White,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Medium
-        )
+        Text("Your Library is Empty", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Medium)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            "Start adding your favorite songs!",
-            color = Color.Gray,
-            fontSize = 14.sp
-        )
+        Text("Start adding your favorite songs!", color = Color.Gray, fontSize = 14.sp)
     }
 }
 
@@ -172,12 +205,12 @@ fun TopBar() {
 }
 
 @Composable
-fun CategoryCard(t: Tile) {
-    // Generate two random colors for the gradient
+fun CategoryCard(tile: Tile, onClick: () -> Unit) {
     val color1 = remember { Color(Random.nextInt(100, 256), Random.nextInt(100, 256), Random.nextInt(100, 256)) }
     val color2 = remember { Color(Random.nextInt(100, 256), Random.nextInt(100, 256), Random.nextInt(100, 256)) }
+
     Button(
-        onClick = { /* no-op */ },
+        onClick = onClick,
         shape = RoundedCornerShape(24.dp),
         elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
         contentPadding = PaddingValues(0.dp),
@@ -189,11 +222,7 @@ fun CategoryCard(t: Tile) {
             modifier = Modifier
                 .fillMaxSize()
                 .clip(RoundedCornerShape(24.dp))
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(color1, color2)
-                    )
-                )
+                .background(Brush.linearGradient(colors = listOf(color1, color2)))
         ) {
             Box(
                 modifier = Modifier
@@ -201,7 +230,7 @@ fun CategoryCard(t: Tile) {
                     .background(Color.Black.copy(alpha = 0.25f))
             )
             Text(
-                t.label,
+                tile.label,
                 color = Color.White,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -213,42 +242,4 @@ fun CategoryCard(t: Tile) {
             )
         }
     }
-}
-
-data class Tile(val label: String)
-
-fun demoTiles(): List<Tile> {
-    return listOf(
-        Tile("Pedda Puli Mix"),
-        Tile("Ganna Music Live"),
-        Tile("Ganna Music Radio"),
-        Tile("Coming Soon"),
-        Tile("Chatal Band"),
-        Tile("Jatara Mix"),
-        Tile("Country"),
-        Tile("Pop"),
-        Tile("Hindi Retro"),
-        Tile("Punjabi Hits"),
-        Tile("Telugu Hits"),
-        Tile("Mass"),
-        Tile("Top 50 India"),
-        Tile("Pop Remix"),
-        Tile("Bollywood Beats"),
-        Tile("Chill Vibes"),
-        Tile("Workout Anthems"),
-        Tile("Classical Essentials"),
-        Tile("Romantic Hits"),
-        Tile("Party Time"),
-        Tile("Focus Flow"),
-        Tile("Indie India"),
-        Tile("Global EDM"),
-        Tile("Morning Motivation"),
-        Tile("Evening Relax"),
-        Tile("Rock Classics"),
-        Tile("Jazz Cafe"),
-        Tile("Instrumental Bliss"),
-        Tile("Throwback 90s"),
-        Tile("Kids Zone"),
-        Tile("Travel Tunes")
-    )
 }
